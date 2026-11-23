@@ -1,0 +1,10 @@
+{
+  "jobs": [
+    {
+      "title": "AI Software Engineer",
+      "absolute_url": "https://example.com/jobs/1",
+      "location": {"name": "Remote"},
+      "content": "Build AI systems with a distributed team."
+    }
+  ]
+}

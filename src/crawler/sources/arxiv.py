@@ -1,3 +1,5 @@
+# Kept for compatibility only. arXiv API fetching is disabled by default because
+# robots.txt at export.arxiv.org disallows its root paths (/).
 """arXiv API page fetching and Atom XML parsing."""
 
 from __future__ import annotations

@@ -133,7 +133,14 @@ class HuggingFaceModelsSource:
             result = await self.fetcher.get(
                 f"https://huggingface.co/api/organizations/{owner}/overview",
             )
-            is_org = result.status == 200
+            if result.status == 304:
+                try:
+                    payload = json.loads(result.text)
+                    is_org = isinstance(payload, dict) and bool(payload.get("name"))
+                except json.JSONDecodeError:
+                    is_org = False
+            else:
+                is_org = result.status == 200
             if result.status == 404:
                 is_org = False
             elif not is_org:

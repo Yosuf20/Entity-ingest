@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from typing import Iterable, Mapping
@@ -55,7 +56,10 @@ def _extract_full_text(html: str) -> str:
     return " ".join(soup.stripped_strings)
 
 
-def _is_ai_related(title: str) -> bool:
+def _is_ai_related(title: str, keywords: list[str] | None = None) -> bool:
+    if keywords:
+        text = title.lower()
+        return any(re.search(rf"(?<!\w){re.escape(keyword.lower())}(?!\w)", text) for keyword in keywords)
     text = f" {title.lower()} "
     terms = (
         " ai ", " ai-", "artificial intelligence", "machine learning",
@@ -68,6 +72,7 @@ def _is_ai_related(title: str) -> bool:
 async def collect_news(
     fetcher: AsyncFetcher,
     now: datetime,
+    ai_keywords: list[str] | None = None,
 ) -> list[dict[str, object]]:
     """Collect five public news sources and their full article text."""
     now = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
@@ -125,7 +130,7 @@ async def collect_news(
     for hit in payload.get("hits", []):
         url = hit.get("url") or f"https://news.ycombinator.com/item?id={hit.get('objectID')}"
         title = hit.get("title") or ""
-        if not _is_ai_related(title):
+        if not _is_ai_related(title, ai_keywords):
             continue
         published = hit.get("created_at")
         hn_items.append({
@@ -133,23 +138,28 @@ async def collect_news(
             "url": url,
             "published": published,
             "html": hit.get("_highlightResult", {}),
+            "hn_url": f"https://news.ycombinator.com/item?id={hit.get('objectID')}",
         })
 
     hn_urls = [str(item["url"]) for item in hn_items]
     hn_results = await fetcher.gather(hn_urls)
     for raw, article_result in zip(hn_items, hn_results):
         html = article_result.text if hasattr(article_result, "text") else ""
+        full_text = _extract_full_text(html) if html else ""
+        if not full_text:
+            continue
         collected_at = datetime.now(timezone.utc).isoformat()
         published, method, confidence = parse_published(raw, now)
         items.append({
             "title": str(raw["title"]),
             "url": str(raw["url"]),
             "published": published,
-            "date_method": method,
+            "date_method": "hn_submission_time",
             "date_confidence": confidence,
-            "full_text": _extract_full_text(html) if html else "",
+            "full_text": full_text,
             "extracted_at": collected_at,
             "feed_url": NEWS_SOURCES["hacker_news"],
+            "hn_url": raw["hn_url"],
             "source": {"name": "hacker_news", "url": str(raw["url"])},
             "collectedAt": collected_at,
         })

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <entry>
+    <id>http://arxiv.org/abs/2411.01234v2</id>
+    <updated>2024-11-15T12:30:45Z</updated>
+    <published>2024-11-14T09:15:30Z</published>
+    <title>New
+      Attention Model</title>
+    <summary>  An abstract with
+      multiple lines.  </summary>
+    <author><name>Alice Example</name></author>
+    <author><name>Bob Example</name></author>
+    <arxiv:comment>Code at https://github.com/Example/Attention-Repo.git.</arxiv:comment>
+    <arxiv:journal_ref>Proceedings of ExampleConf 2024</arxiv:journal_ref>
+    <arxiv:primary_category term="cs.AI"/>
+    <link href="http://arxiv.org/abs/2411.01234v2" rel="alternate" type="text/html"/>
+    <link href="http://arxiv.org/pdf/2411.01234v2" rel="related" type="application/pdf" title="pdf"/>
+  </entry>
+  <entry>
+    <id>https://arxiv.org/abs/2401.00001v1</id>
+    <updated>2024-01-02T10:00:00Z</updated>
+    <published>2024-01-02T10:00:00Z</published>
+    <title>Comment-Free Paper</title>
+    <summary>No comment is present.</summary>
+    <author><name>Carol Example</name></author>
+    <arxiv:primary_category term="cs.LG"/>
+    <link href="https://arxiv.org/abs/2401.00001v1" rel="alternate"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/cs/0501001v3</id>
+    <updated>2005-01-04T08:00:00Z</updated>
+    <published>2005-01-03T08:00:00Z</published>
+    <title>An Old-Style arXiv Paper</title>
+    <summary>An old-style identifier fixture.</summary>
+    <author><name>Dan Oldstyle</name></author>
+    <author><name>Erin Oldstyle</name></author>
+    <arxiv:primary_category term="cs.CL"/>
+  </entry>
+</feed>

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import AsyncIterator, Iterable
 
 from src.config import AppConfig, CrawlerConfig
-from src.crawler.sources.arxiv import ArxivPaper, iter_papers
+from src.crawler.sources.hf_papers_list import HuggingFacePaper, iter_hf_papers
 from src.crawler.sources.github import (
     GitHubSource,
     extract_github_repos,
@@ -64,9 +64,18 @@ def _existing_metric_count(conn) -> int:
     return int(row["COUNT(*)"] if hasattr(row, "keys") else row[0])
 
 
-def find_repo_link(paper: ArxivPaper, hf_link: str | None = None) -> str | None:
+def find_repo_link(paper: HuggingFacePaper, hf_link: str | None = None) -> str | None:
     """Find a repository from abstract/comment first, then optional HF fallback."""
-    text = "\n".join(value for value in (paper.abstract, paper.comment) if value)
+    text = "\n".join(
+        value
+        for value in (
+            getattr(paper, "abstract", None),
+            getattr(paper, "comment", None),
+        )
+        if value
+    )
+    if hf_link is None:
+        hf_link = getattr(paper, "github_url", None)
     repos = extract_github_repos(text)
     if repos:
         return repos[0]
@@ -80,7 +89,7 @@ def find_repo_link(paper: ArxivPaper, hf_link: str | None = None) -> str | None:
 
 
 class PapersPipeline:
-    """Orchestrate arXiv, code-link, and GitHub-star collection."""
+    """Orchestrate Hugging Face, arXiv-link, and GitHub-star collection."""
 
     def __init__(
         self,
@@ -161,7 +170,7 @@ class PapersPipeline:
             )
             return summary
 
-        queue: asyncio.Queue[tuple[ArxivPaper | None, asyncio.Future[None] | None]] = asyncio.Queue(
+        queue: asyncio.Queue[tuple[HuggingFacePaper | None, asyncio.Future[None] | None]] = asyncio.Queue(
             maxsize=max(1, self.worker_count)
         )
         stop = asyncio.Event()
@@ -188,10 +197,9 @@ class PapersPipeline:
 
         source = self.paper_iterator
         if source is None:
-            async def source_iterator() -> AsyncIterator[ArxivPaper]:
-                async for paper in iter_papers(
+            async def source_iterator() -> AsyncIterator[HuggingFacePaper]:
+                async for paper in iter_hf_papers(
                     self.fetcher,
-                    categories=categories_value,
                     page_size=page_size_value,
                     max_pages=max_pages,
                 ):
@@ -230,7 +238,7 @@ class PapersPipeline:
 
     async def _process_paper(
         self,
-        paper: ArxivPaper,
+        paper: HuggingFacePaper,
         existing_ids: set[str],
         summary: PapersSummary,
         stop: asyncio.Event,
@@ -272,21 +280,28 @@ class PapersPipeline:
 
         summary.stars_resolved += 1
         collected_at = _utc_now()
+        published = getattr(paper, "published", None)
+        published_date = (
+            getattr(paper, "published_date", None)
+            or (published.isoformat() if published is not None else "")
+        )
         record = ResearchPaper(
             arxiv_id=paper.arxiv_id,
-            title=paper.title,
+            title=paper.title or paper.arxiv_id,
             authors=paper.authors,
-            paper_url=paper.abs_url,
-            published_date=paper.published.isoformat(),
-            pdf_url=paper.pdf_url,
+            paper_url=f"https://arxiv.org/abs/{paper.arxiv_id}",
+            published_date=published_date,
+            pdf_url=getattr(paper, "pdf_url", None) or getattr(paper, "abs_url", None),
             abstract=paper.abstract,
-            comment=paper.comment,
-            journal_ref=paper.journal_ref,
+            comment=None,
+            journal_ref=None,
             github_url=repo_link,
             github_stars=repo_info.stars,
             github_stars_fetched_at=repo_info.fetched_at.isoformat(),
             github_404=False,
-            source_url=paper.abs_url,
+            source_url=getattr(paper, "source_url", None)
+            or getattr(paper, "abs_url", None)
+            or f"https://huggingface.co/papers/{paper.arxiv_id}",
             collected_at=collected_at,
         )
 

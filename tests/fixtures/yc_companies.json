@@ -1,0 +1,136 @@
+﻿[
+    {
+        "id":  30368,
+        "name":  "Red Barn Robotics",
+        "slug":  "red-barn-robotics",
+        "former_names":  [
+
+                         ],
+        "small_logo_thumb_url":  "https://bookface-images.s3.amazonaws.com/small_logos/f9fea0321812586f595ebfa63ebe19d45c322ad2.png",
+        "website":  "https://www.redbarnrobotics.com",
+        "all_locations":  "Seattle, WA, USA",
+        "long_description":  "We are building an autonomous robot to precisely eliminate weeds and leave crops untouched. Despite $100 billion being spent annually on weed control, weeds still cost the US economy $46B/year. Weeds steal sunlight and nutrients from crops, forcing farmers to choose between higher costs and lower yields. Moreover, many farms still rely on hand labor to control weed growth. The process is slow, expensive, and increasingly difficult due to constant labor shortages (1 out of every 5 US farm positions go unfilled each year). Our robot nicknamed the Field Hand is able to automate one of the worst jobs on a farm and will help healthily feed the world. ",
+        "one_liner":  "A Roomba for weeds on a farm. ",
+        "team_size":  3,
+        "industry":  "Industrials",
+        "subindustry":  "Industrials -\u003e Agriculture",
+        "launched_at":  1739827651,
+        "tags":  [
+                     "Robotics",
+                     "Agriculture",
+                     "Sustainable Agriculture"
+                 ],
+        "tags_highlighted":  [
+
+                             ],
+        "top_company":  false,
+        "isHiring":  false,
+        "nonprofit":  false,
+        "batch":  "W25",
+        "status":  "Active",
+        "industries":  [
+                           "Industrials",
+                           "Agriculture"
+                       ],
+        "regions":  [
+                        "United States of America",
+                        "America / Canada"
+                    ],
+        "stage":  "Early",
+        "app_video_public":  false,
+        "demo_day_video_public":  false,
+        "app_answers":  null,
+        "question_answers":  false,
+        "objectID":  "30368"
+    },
+    {
+        "id":  30365,
+        "name":  "Mentra",
+        "slug":  "mentra",
+        "former_names":  [
+
+                         ],
+        "small_logo_thumb_url":  "https://bookface-images.s3.amazonaws.com/small_logos/7244027171670b7caf312b35e16b9e5cfdd49164.png",
+        "website":  "https://mentra.glass",
+        "all_locations":  "San Francisco, CA, USA",
+        "long_description":  "Mentra is building the open source operating system for smart glasses. The smart glasses hardware is finally ready, so we\u0027re building the OS and app store to power the next computing platform.",
+        "one_liner":  "Building the open source smart glasses operating system.",
+        "team_size":  4,
+        "industry":  "Consumer",
+        "subindustry":  "Consumer -\u003e Virtual and Augmented Reality",
+        "launched_at":  1738358223,
+        "tags":  [
+                     "Artificial Intelligence",
+                     "Hardware",
+                     "Consumer",
+                     "Open Source",
+                     "AR"
+                 ],
+        "tags_highlighted":  [
+
+                             ],
+        "top_company":  false,
+        "isHiring":  true,
+        "nonprofit":  false,
+        "batch":  "W25",
+        "status":  "Active",
+        "industries":  [
+                           "Consumer",
+                           "Virtual and Augmented Reality"
+                       ],
+        "regions":  [
+                        "United States of America",
+                        "America / Canada"
+                    ],
+        "stage":  "Early",
+        "app_video_public":  false,
+        "demo_day_video_public":  false,
+        "app_answers":  null,
+        "question_answers":  false,
+        "objectID":  "30365"
+    },
+    {
+        "id":  30363,
+        "name":  "BlindPay",
+        "slug":  "blindpay",
+        "former_names":  [
+
+                         ],
+        "small_logo_thumb_url":  "https://bookface-images.s3.amazonaws.com/small_logos/f1817a0c9b9ff2db524e7cb0712e6867cdfcb2f0.png",
+        "website":  "https://blindpay.com/",
+        "all_locations":  "",
+        "long_description":  "BlindPay is a stablecoin API that enables companies to send and receive money worldwide using fiat money, stablecoins and multiple blockchains. We handle all the complex compliance and regulatory requirements, so companies can focus on their core business.",
+        "one_liner":  "Stablecoin API for global payments",
+        "team_size":  4,
+        "industry":  "Fintech",
+        "subindustry":  "Fintech -\u003e Payments",
+        "launched_at":  1737430094,
+        "tags":  [
+                     "Fintech",
+                     "Crypto / Web3",
+                     "Payments",
+                     "API"
+                 ],
+        "tags_highlighted":  [
+                                 "Crypto / Web3"
+                             ],
+        "top_company":  false,
+        "isHiring":  false,
+        "nonprofit":  false,
+        "batch":  "W25",
+        "status":  "Active",
+        "industries":  [
+                           "Fintech",
+                           "Payments"
+                       ],
+        "regions":  [
+                        "Unspecified"
+                    ],
+        "stage":  "Early",
+        "app_video_public":  false,
+        "demo_day_video_public":  false,
+        "app_answers":  null,
+        "question_answers":  false,
+        "objectID":  "30363"
+    }
+]

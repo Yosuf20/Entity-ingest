@@ -1,6 +1,24 @@
-# AI Data Ingestion Pipeline
+<p align="center">
+  <img src="assets/logo.svg" alt="AI Signal Ingestion" width="420">
+</p>
 
-This repository is a local, SQLite-backed data pipeline for collecting Y Combinator startup records, organization-owned Hugging Face model products, Hugging Face daily papers, recent AI news, and AI-related jobs. It uses async HTTP fetching, robots.txt checks, source-specific parsers, arXiv/GitHub/Hugging Face enrichment, and optional LLM resilience utilities for structured extraction. Most collection commands run without an LLM: the papers source is deterministic, startup/product collection is deterministic, and the news/job pipelines are source parsers plus date/freshness filtering.
+<p align="center">
+  Async data ingestion pipeline with multi-provider LLM extraction, rate-limit handling, and entity resolution.
+</p>
+
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.12%2B-blue">
+  <img alt="Async" src="https://img.shields.io/badge/async-httpx-0EA5E9">
+  <img alt="Storage" src="https://img.shields.io/badge/storage-SQLite-lightgrey">
+</p>
+
+---
+
+# AI Signal Ingestion
+
+A local, SQLite-backed data pipeline that collects Y Combinator startup records, organization-owned Hugging Face model products, Hugging Face daily papers with GitHub star counts, recent AI news, and AI-related jobs. It uses async HTTP fetching, robots.txt checks, source-specific parsers, and Hugging Face / GitHub enrichment. A set of LLM resilience utilities (fallback chain, backoff, chunking, grounding check) is included for structured extraction.
+
+Most collection commands run without an LLM. The papers, startup and product sources are deterministic, and the news and job pipelines are source parsers plus date and freshness filtering. Every record carries a real source URL and a collection timestamp.
 
 ```mermaid
 flowchart LR
@@ -11,8 +29,40 @@ flowchart LR
     D --> R[Entity resolver]
     D --> A[Audit]
     D --> E[Google Sheets export]
-    L[Optional LLM orchestrator] --> D
+    L[LLM orchestrator] -.-> D
 ```
+
+## Output
+
+| Item | Link or value |
+|---|---|
+| Public Google Sheet | `<paste Sheet link here>` |
+| Last full run | `<YYYY-MM-DD HH:MM UTC>` |
+
+The Sheet has six tabs:
+
+| Tab | Content | Rows at last run |
+|---|---|---|
+| Startups | Y Combinator companies with source URL | `<fill in>` |
+| Products | Organization-owned Hugging Face models | `<fill in>` |
+| Research Papers | Hugging Face daily papers with GitHub URL, star count and fetch time | `<fill in>` |
+| Jobs | AI-related jobs published in the last 24 hours | `<fill in>` |
+| News | AI news published in the last 24 hours | `<fill in>` |
+| Entity Mapping Log | Raw name, canonical name, method, score | `<fill in>` |
+
+Jobs and News are a snapshot. Only items inside the 24-hour window at run time are kept.
+
+## Data sources
+
+| Vertical | Source | Access method |
+|---|---|---|
+| Startups | Community Y Combinator dataset (MIT-licensed, `akshaybhalotia/yc_company_scraper`); each URL is the company's real `ycombinator.com/companies/<slug>` page | Public JSON file |
+| Products | Hugging Face models, organization-owned only | Public API |
+| Research papers | Hugging Face daily papers; star counts from the GitHub API | Public APIs |
+| News | Hacker News (Algolia API), TechCrunch, The Verge, Wired, VentureBeat | API and RSS/Atom |
+| Jobs | OpenAI, Cohere and Perplexity (Ashby); Anthropic and Scale AI (Greenhouse); FieldAI (Lever); RemoteOK; We Work Remotely | Public JSON APIs and RSS |
+
+Jobs from AI-company boards are kept in full. Jobs from general boards (RemoteOK, We Work Remotely) are kept only when the title or tags match the AI keyword list in `config.yaml`. The `board_type` column records which rule applied.
 
 ## Setup
 
@@ -31,36 +81,21 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Copy `.env.example` to `.env`. The current startup/config code reads these keys:
+Copy `.env.example` to `.env` and fill in the keys you need:
 
 ```text
 GEMINI_API_KEY=...
 GROQ_API_KEY=...
 DEEPSEEK_API_KEY=...
-GITHUB_TOKEN=...                 # optional, improves GitHub API limits
-GOOGLE_SERVICE_ACCOUNT_JSON=...  # optional, required for Sheets export
+GITHUB_TOKEN=...                 # strongly recommended: raises the GitHub API limit
+GOOGLE_SERVICE_ACCOUNT_JSON=...  # path to the key file; required for Sheets export
 GOOGLE_SHEET_ID=...              # optional existing-sheet export target
 LOG_LEVEL=INFO
 ```
 
-`config.yaml` controls:
+API keys belong in environment variables, never in `config.yaml` and never in git. Keep the Google key file outside the repository.
 
-- provider order and model names;
-- provider RPM values;
-- retry base, cap, and maximum attempts;
-- circuit-breaker threshold and cooldown;
-- global crawler concurrency;
-- per-domain concurrency and minimum request interval;
-- papers target and legacy category settings;
-- AI keywords.
-
-API keys belong in environment variables, not `config.yaml`.
-
-Google Sheets export also needs `gspread` and `google-auth`; these packages are not currently listed in `requirements.txt`. Install them explicitly before using `export`:
-
-```bash
-pip install gspread google-auth
-```
+`config.yaml` controls provider order and model names, provider requests per minute, retry settings, circuit-breaker settings, global and per-domain concurrency and request intervals, the papers target, and the AI keyword list. Scaling the crawl is a configuration change.
 
 ## Commands
 
@@ -73,7 +108,7 @@ python main.py papers --target 20
 python main.py papers --target 1000
 ```
 
-The papers pipeline pages the Hugging Face `/api/daily_papers?date=...` endpoint. It derives the arXiv abstract URL as `https://arxiv.org/abs/<arxiv_id>`, uses the Hugging Face paper URL as `source_url`, and resolves GitHub stars through GitHub's API. It does not fetch or use the arXiv API. Records are unique by `arxiv_id`.
+Pages the Hugging Face `/api/daily_papers?date=...` endpoint. The arXiv abstract URL (`https://arxiv.org/abs/<arxiv_id>`) is derived from the arXiv id and is never fetched. The Hugging Face paper page is the `source_url`. GitHub stars come from the GitHub API and are stored with the time they were fetched. Records are unique by `arxiv_id`, so reruns add no duplicates.
 
 ### Startups and products
 
@@ -81,7 +116,7 @@ The papers pipeline pages the Hugging Face `/api/daily_papers?date=...` endpoint
 python main.py startups-products --target 1000
 ```
 
-This fetches the MIT-licensed Y Combinator community dataset and paginates organization-owned Hugging Face models. The Hugging Face organization check is an API lookup. Product records are saved with a model-page source URL and a pricing value of `FREE` only for recognized open-source license tags.
+Reads the community Y Combinator dataset and pages through organization-owned Hugging Face models. Product records use the model page as `source_url`. `pricingModel` is set to `FREE` only for recognized open-source license tags and is otherwise left empty.
 
 ### News and jobs
 
@@ -89,7 +124,7 @@ This fetches the MIT-licensed Y Combinator community dataset and paginates organ
 python main.py signals
 ```
 
-This collects configured news RSS/API sources and job-board APIs, applies the 24-hour freshness rule where verified timestamps exist, and saves/refreshes the `news_signals` and `job_signals` tables.
+Collects the configured news and job sources, normalizes publication dates, applies the 24-hour rule, and refreshes the `news_signals` and `job_signals` tables. Each row stores the item URL as `source_url` and the feed or API endpoint as `feed_url`.
 
 ### Entity resolution
 
@@ -97,7 +132,7 @@ This collects configured news RSS/API sources and job-board APIs, applies the 24
 python main.py resolve
 ```
 
-This resolves distinct startup/product/job company names using exact, alias, and conservative fuzzy matching from `src/resolver/seed_startups.json`, and writes cached results to `entity_log`.
+Resolves distinct startup, product and job-company names against the seed list in `src/resolver/seed_startups.json` using exact, alias and conservative fuzzy matching, and writes every decision to `entity_log`.
 
 ### Google Sheets export
 
@@ -106,7 +141,7 @@ python main.py export
 python main.py export --sheet-id <existing-spreadsheet-id> --sheet-title "AI Data"
 ```
 
-Export creates or updates six tabs: `Startups`, `Products`, `Research Papers`, `Jobs`, `News`, and `Entity Mapping Log`. Credentials and optional sheet ID are supplied by environment variables or CLI arguments.
+Writes the six tabs described above. Rerunning clears and rewrites them, so the export is idempotent.
 
 ### Audit
 
@@ -115,39 +150,74 @@ python main.py audit
 python main.py audit --sample-size 10
 ```
 
-The audit checks minimum counts, provenance, duplicates, 24-hour jobs/news freshness, product pricing enum values, entity-log completeness, and a random source-URL sample. The scale thresholds remain 1,000 rows for startups, products, and papers.
+Checks minimum counts, provenance (source URL and timestamp on every row), duplicates, 24-hour freshness for jobs and news, the pricing enum, entity-log completeness, and a random sample of source URLs.
 
 ### Tests
 
 ```bash
-pytest -q
-# or
-uv run pytest -q
+python -m pytest -q
 ```
 
-The suite uses mocks and injected clocks/sleep functions for deterministic HTTP, retry, rate-limit, breaker, and pipeline tests.
+The suite uses mocks and injected clocks and sleep functions, so HTTP, retry, rate-limit, circuit-breaker and pipeline tests are fast and deterministic.
 
 ## Design decisions
 
-- **Async crawler:** `AsyncFetcher` uses `httpx`, a global semaphore, per-domain semaphores, minimum inter-request intervals, robots.txt parsing, ETag caching, and SQLite raw-page persistence.
-- **Fallback chain:** the LLM module implements ordered Gemini → Groq → DeepSeek fallback. The configured providers are not invoked by the current `papers`, `signals`, `startups-products`, `resolve`, `export`, or `audit` commands; they are reusable but presently standalone infrastructure.
-- **429 backoff and jitter:** retryable HTTP failures use exponential delay capped at the configured maximum. `Retry-After` is preferred when supplied. Jitter is uniformly sampled from 0.5–1.5 times the delay.
-- **413 handling:** the LLM orchestrator applies up to three text reductions (60% of the previous text each time) and retries the same provider before moving to fallback providers.
-- **Grounding check:** every LLM string result must normalize to a substring of the source text; numeric values must appear verbatim. Meta fields such as `source_url` and `extracted_by` are excluded. Failed grounding moves to the next provider.
-- **Circuit breaking:** provider circuit breakers open after five consecutive failures, wait for a configured cooldown, and allow one HALF_OPEN probe.
-- **Dedupe:** startups/products use canonical source URL primary keys, papers use unique `arxiv_id`, and signals use a canonical URL plus normalized text hash.
-- **Freshness:** dated news/job records must be within 24 hours and not in the future. Undated items use a first-run baseline plus canonical/hash unseen-item filtering; their freshness is inferred as “new since last run,” not treated as verified publication time.
-- **Resume:** startup/product and paper inserts ignore duplicates. Papers also compare existing `arxiv_id` values before GitHub/star work. Signal processing is based on stored seen-item hashes.
+- **Async crawler.** `AsyncFetcher` uses `httpx` with a global semaphore, per-domain semaphores, per-domain minimum request intervals, robots.txt parsing, ETag caching and SQLite raw-page persistence. Query-string secrets are removed from logs.
+- **Fallback chain.** The LLM module tries Gemini, then Groq, then DeepSeek. A provider is skipped while its circuit breaker is open.
+- **429 handling.** Retryable failures use exponential backoff capped at a configured maximum, with `Retry-After` preferred when the server sends it. Jitter is sampled uniformly from 0.5 to 1.5 times the delay, so concurrent tasks do not retry at the same moment. A per-provider token bucket keeps requests under the provider limit, and a 429 pauses the bucket for all waiting tasks.
+- **413 handling.** The chunker removes boilerplate, keeps the title and headings, ranks paragraphs by information density, and truncates to a token budget. On a 413 the orchestrator shrinks the text to 60% of its previous size and retries the same provider, up to three times, before falling back.
+- **Grounding check (anti-hallucination).** The LLM only structures text that was already fetched. Every extracted string must appear in the source text after normalization, and numbers must appear verbatim. Results that fail are rejected and the next provider is tried. URLs, dates and GitHub star counts are always produced by deterministic code, never by an LLM.
+- **Circuit breaking.** A provider's breaker opens after five consecutive failures, waits for the cooldown, then allows a single trial request.
+- **Dead-letter queue.** If every provider fails, the item is saved to `pending_extractions` with a retry time and is not dropped.
+- **Dedupe.** Startups and products use the canonical source URL as primary key, papers use a unique `arxiv_id`, and signals use a canonical URL plus a normalized text hash.
+- **Freshness.** Items with a verified timestamp must be within 24 hours and not in the future. The date normalizer tries the API or RSS timestamp, JSON-LD, meta tags, relative strings such as "2 hours ago", and URL dates, and records which method succeeded. Items with no date at all use a seen-item hash and are marked as inferred "new since last run", never presented as a verified publication time.
+- **Entity resolution.** Names are normalized (case, punctuation, legal suffixes), then matched by exact name, alias, and finally fuzzy match with a high threshold and a required margin over the runner-up. Anything below the threshold stays `UNRESOLVED` instead of being forced into a wrong match.
+
+## Anti-bot strategy
+
+The pipeline prefers official APIs, RSS feeds and public JSON endpoints, which avoids bot protection entirely. For sources behind Cloudflare, Datadome or heavy JavaScript rendering, the approach is tiered:
+
+1. Official API, data dump or licensed data feed.
+2. Plain async HTTP with a descriptive User-Agent, conditional requests (ETag), per-domain rate limits, retries with jitter and caching.
+3. Playwright (async) with realistic browser contexts, session and cookie reuse, and randomized delays for JavaScript-rendered pages.
+4. A managed unblocking service or a data partnership for aggressively protected sources.
+
+Captcha solving and overriding an explicit robots.txt disallow are out of scope by design. This repository implements tiers 1 and 2. Tiers 3 and 4 are documented only.
+
+## Architecture and scale
+
+See `architecture.pdf` for the scale strategy (500,000+ records), 413 and 429 handling across thousands of concurrent extractions, cross-node deduplication, and the storage design. In short: a distributed queue with stateless workers, a shared Redis token bucket per LLM provider, a unique canonical-URL and content-hash key for idempotent writes, and Postgres (with pgvector) plus a graph layer for relationships. That design is proposed, not implemented here.
 
 ## Limitations
 
-- arXiv's API host is intentionally not used. `https://export.arxiv.org/robots.txt` disallows `/`; the repository keeps `arxiv.py` only for compatibility/reference.
-- The papers pipeline is Hugging Face daily-papers based. Its historical pagination is by date and can include empty days.
-- The current scale is local: SQLite, in-process semiautomatic resume, and in-process provider token buckets. Redis, distributed queues, stateless workers, and Postgres are proposed architecture, not implemented here.
-- The LLM providers and grounding/orchestration module are implemented and tested, but no current CLI command wires it into a collection pipeline. `pending_extractions` is persisted, but no CLI retry-drain worker is implemented.
-- Google Sheets export requires extra packages not declared in `requirements.txt` and service-account credentials.
-- GitHub star resolution is best-effort. Repository 404s are counted, and missing or invalid GitHub links do not create a paper record.
-- Free-tier provider limits vary. The code has no durable provider accounting, Redis limits, or paid-subscription guarantees.
-- Robots.txt handling fails open if a `robots.txt` request returns 404 or 5xx or is unreachable; it does not bypass an explicitly disallowed path.
-- No Playwright, proxy pool, CAPTCHA-solving, cookie/session manager, or anti-bot bypass is implemented.
-- The random source audit makes real HEAD/GET requests and will depend on network access and current remote availability.
+- **No arXiv API use.** `https://export.arxiv.org/robots.txt` disallows all paths, so the arXiv API is not used. `arxiv.py` stays in the repository for reference only. Papers come from Hugging Face daily papers, which lean toward popular papers, and their pagination is by date and can include empty days.
+- **Local scale.** Storage is SQLite, resume is in-process, and the provider token buckets are in-process. Redis, distributed queues, stateless workers and Postgres are proposed architecture, not implemented.
+- **LLM layer not wired into collection.** The providers, orchestrator and grounding check are implemented and tested, but no collection command currently calls them. `pending_extractions` is persisted, and no command drains it yet.
+- **Startup data comes from a community dataset**, not a live crawl of ycombinator.com. Some companies may have been renamed or removed since it was built.
+- **Product owners are not always startups.** Organization-owned Hugging Face models include large companies. `pricingModel` is empty for most products, because only explicit open-source license tags set `FREE`.
+- **Most entities are `UNRESOLVED`.** The seed list holds about 50 well-known AI companies, so most of the thousands of startup names are intentionally left unresolved instead of being matched wrongly.
+- **Small, honest signal counts.** Jobs and News are only the items published in the last 24 hours at run time. Several AI-company job boards (Scale AI, Cohere, Perplexity, FieldAI) and RemoteOK had no postings in that window at the time of the run. Hacker News dates are submission times, not the publication time of the linked page.
+- **Keyword-based AI filter.** The job relevance filter for general boards is a keyword match, so some loosely related roles pass.
+- **GitHub stars are best-effort.** Counts change constantly, so each row stores the fetch time. Repositories that return 404 are counted and skipped.
+- **Robots.txt handling fails open** if the file returns 404, a 5xx error, or cannot be reached. It never bypasses an explicitly disallowed path.
+- **No browser automation or proxies.** Playwright, proxy pools, session managers and CAPTCHA handling are not implemented.
+- **Audit sampling needs network.** The random URL sample makes real requests, so its results depend on current remote availability.
+
+## Repository layout
+
+```text
+src/
+  config.py            typed settings loaded from config.yaml
+  schemas.py           record models
+  crawler/             AsyncFetcher and source adapters
+  parsers/             date normalization
+  llm/                 providers, orchestrator, retry, rate limit, breaker, chunker
+  pipelines/           papers, startups and products, signals
+  resolver/            entity resolver and seed list
+  export/              Google Sheets export and audit
+  storage/             SQLite helpers
+tests/                 unit and pipeline tests
+main.py                command line entry point
+config.yaml            all tunable settings
+architecture.pdf       design document
+```

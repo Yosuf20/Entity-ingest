@@ -110,14 +110,14 @@ def save_signals(conn: sqlite3.Connection, items: Iterable[dict]) -> None:
                 """
                 INSERT OR REPLACE INTO news_signals (
                     id, title, url, published, date_method, date_confidence,
-                    full_text, extracted_at, source_url, feed_url, collectedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    full_text, extracted_at, source_url, feed_url, hn_url, collectedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     digest, item.get("title"), item.get("url"), published_text,
                     item.get("date_method"), confidence_text, item.get("full_text"),
                     item.get("extracted_at"), item.get("url"), item.get("feed_url") or source.get("url"),
-                    item.get("collectedAt"),
+                    item.get("hn_url"), item.get("collectedAt"),
                 ),
             )
         else:
@@ -126,8 +126,8 @@ def save_signals(conn: sqlite3.Connection, items: Iterable[dict]) -> None:
                 INSERT OR REPLACE INTO job_signals (
                     id, title, url, published, date_method, date_confidence,
                     full_text, extracted_at, company, is_remote, role_family,
-                    source_url, feed_url, collectedAt
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source_url, feed_url, board_type, collectedAt
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     digest, item.get("title"), item.get("url"), published_text,
@@ -135,7 +135,7 @@ def save_signals(conn: sqlite3.Connection, items: Iterable[dict]) -> None:
                     item.get("extracted_at"), content.get("company"),
                     1 if content.get("is_remote") else 0, content.get("role_family"),
                     item.get("url"), item.get("feed_url") or source.get("url"),
-                    item.get("collectedAt"),
+                    item.get("board_type"), item.get("collectedAt"),
                 ),
             )
     conn.commit()

@@ -82,6 +82,7 @@ class AppConfig(BaseModel):
     breaker: BreakerConfig
     crawler: CrawlerConfig = Field(default_factory=CrawlerConfig)
     papers_pipeline: PapersPipelineConfig = Field(default_factory=PapersPipelineConfig)
+    ai_keywords: List[str] = Field(default_factory=list)
 
 
 def load_config(path: Path = _CONFIG_PATH) -> AppConfig:

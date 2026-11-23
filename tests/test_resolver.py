@@ -48,6 +48,11 @@ def test_unknown_company_is_unresolved(resolver: EntityResolver):
     assert result == (raw, None, "UNRESOLVED", result[3])
 
 
+def test_cohere_is_not_coherent(resolver: EntityResolver):
+    assert resolver.resolve("Cohere")[1] == "Cohere"
+    assert resolver.resolve("Coherent")[1] is None
+
+
 def test_unicode_and_case_variations(resolver: EntityResolver):
     assert resolver.resolve("ＯＰＥＮＡＩ")[1] == "OpenAI"
     assert resolver.resolve("OPENAI")[1] == "OpenAI"

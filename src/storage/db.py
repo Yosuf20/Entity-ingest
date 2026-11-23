@@ -96,6 +96,7 @@ def init_db(db_path=_DEFAULT_DB) -> sqlite3.Connection:
             extracted_at TEXT NOT NULL,
             source_url TEXT NOT NULL,
             feed_url TEXT,
+            hn_url TEXT,
             collectedAt TEXT NOT NULL
         );
 
@@ -113,7 +114,16 @@ def init_db(db_path=_DEFAULT_DB) -> sqlite3.Connection:
             role_family TEXT,
             source_url TEXT NOT NULL,
             feed_url TEXT,
+            board_type TEXT,
             collectedAt TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS entity_log (
+            raw TEXT PRIMARY KEY,
+            canonical TEXT,
+            method TEXT NOT NULL,
+            score REAL NOT NULL,
+            resolved_at TEXT NOT NULL
         );
     """)
     for table in ("news_signals", "job_signals"):
@@ -123,6 +133,11 @@ def init_db(db_path=_DEFAULT_DB) -> sqlite3.Connection:
         }
         if "feed_url" not in columns:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN feed_url TEXT")
+        if table == "news_signals":
+            if "hn_url" not in columns:
+                conn.execute("ALTER TABLE news_signals ADD COLUMN hn_url TEXT")
+        elif "board_type" not in columns:
+            conn.execute("ALTER TABLE job_signals ADD COLUMN board_type TEXT")
         conn.execute(f"UPDATE {table} SET feed_url = source_url WHERE feed_url IS NULL")
         conn.execute(f"UPDATE {table} SET source_url = url WHERE url IS NOT NULL AND url != ''")
     conn.commit()

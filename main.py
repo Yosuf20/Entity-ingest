@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 from datetime import datetime, timezone
 
 from src.config import CrawlerConfig, load_config
@@ -18,6 +19,7 @@ from src.pipelines.papers import run_papers
 from src.export.sheets import export_sheets
 from src.export.audit import print_audit_report, run_audit
 from src.storage.db import init_db as init_storage_db
+from src.resolver.resolve import bulk_resolve, export_entity_log
 
 log = logging.getLogger(__name__)
 
@@ -28,8 +30,8 @@ async def run_signals(db_path: str = "data/pipeline.db") -> dict:
     conn = init_db(db_path)
     try:
         async with AsyncFetcher(config, db=conn) as fetcher:
-            news = await collect_news(fetcher, now)
-            jobs = await collect_jobs(fetcher, now)
+            news = await collect_news(fetcher, now, config.ai_keywords)
+            jobs = await collect_jobs(fetcher, now, config.ai_keywords)
         items = process_items(conn, news + jobs, now)
         save_signals(conn, items)
         return {"count": len(items), "items": items}
@@ -105,6 +107,46 @@ def run_audit_command(
         conn.close()
 
 
+def run_resolve_command(db_path: str = "data/pipeline.db") -> dict:
+    conn = init_storage_db(db_path)
+    try:
+        names: set[str] = set()
+        specs = (
+            ("startups", "entity_name"),
+            ("products", "startup_name"),
+            ("job_signals", "company"),
+        )
+        for table, column in specs:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (table,),
+            ).fetchone()
+            if not exists:
+                continue
+            for row in conn.execute(f"SELECT DISTINCT {column} FROM {table}").fetchall():
+                raw = str(row[0]).strip() if row[0] is not None else ""
+                if raw:
+                    names.add(raw)
+
+        bulk_resolve(conn, sorted(names))
+        rows = export_entity_log(conn)
+        counts = {method: 0 for method in ("exact", "alias", "fuzzy", "UNRESOLVED")}
+        for row in rows:
+            if row["method"] in counts:
+                counts[row["method"]] += 1
+
+        random_rows = random.sample(rows, k=min(10, len(rows)))
+        fuzzy_rows = [row for row in rows if row["method"] == "fuzzy"]
+        return {
+            "raw_names_processed": len(names),
+            "counts": counts,
+            "random_rows": random_rows,
+            "fuzzy_rows": fuzzy_rows,
+        }
+    finally:
+        conn.close()
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     parser = argparse.ArgumentParser(prog="main.py")
@@ -119,6 +161,7 @@ def main() -> None:
     export_parser.add_argument("--sheet-title", default="AI Data Ingestion")
     audit_parser = sub.add_parser("audit")
     audit_parser.add_argument("--sample-size", type=int, default=30)
+    sub.add_parser("resolve")
     args = parser.parse_args()
     if args.command == "signals":
         result = asyncio.run(run_signals())
@@ -139,6 +182,14 @@ def main() -> None:
         passed = run_audit_command(sample_size=args.sample_size)
         if not passed:
             raise SystemExit(1)
+    elif args.command == "resolve":
+        result = run_resolve_command()
+        print(json.dumps({
+            "raw_names_processed": result["raw_names_processed"],
+            "counts": result["counts"],
+            "random_log_rows": result["random_rows"],
+            "fuzzy_rows": result["fuzzy_rows"],
+        }, indent=2, default=str))
 
 
 if __name__ == "__main__":

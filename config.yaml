@@ -44,6 +44,23 @@ crawler:
       concurrency: 3
       min_interval: 0.5
 
+ai_keywords:
+  - ai
+  - artificial intelligence
+  - ml
+  - machine learning
+  - llm
+  - large language model
+  - data scientist
+  - data science
+  - nlp
+  - natural language processing
+  - computer vision
+  - deep learning
+  - neural network
+  - generative ai
+  - robotics
+
 papers_pipeline:
   target: 1000
   categories:

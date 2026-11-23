@@ -63,6 +63,7 @@ class Job(_Base):
     date_confidence: Optional[str] = None
     feed_url: Optional[str] = None
     collected_at: Optional[str] = None
+    board_type: Optional[str] = None
 
 
 class News(_Base):
@@ -76,6 +77,7 @@ class News(_Base):
     date_confidence: Optional[str] = None
     feed_url: Optional[str] = None
     collected_at: Optional[str] = None
+    hn_url: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

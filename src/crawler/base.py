@@ -239,6 +239,15 @@ class AsyncFetcher:
         return row["content"] if isinstance(row, sqlite3.Row) else row[0]
 
     def _retry_after(self, response: httpx.Response) -> float | None:
+        if response.status_code == 429:
+            remaining = response.headers.get("X-RateLimit-Remaining")
+            reset = response.headers.get("X-RateLimit-Reset")
+            if remaining == "0" and reset:
+                try:
+                    reset_at = float(reset)
+                    return max(0.0, reset_at - time.time())
+                except (TypeError, ValueError, OverflowError):
+                    pass
         value = response.headers.get("Retry-After")
         if value is None:
             return None

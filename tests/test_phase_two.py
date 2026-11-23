@@ -9,6 +9,12 @@ from src.parsers.dates import parse_published
 from src.pipelines.signals import is_within_24_hours, process_items, save_signals
 from src.storage.db import init_db
 from src.crawler.sources.news import _rss_items, _is_ai_related
+from src.crawler.sources.jobs import (
+    _clean_description,
+    _is_remote,
+    _matches_ai_keywords,
+    _split_wwr_title,
+)
 
 
 NOW = datetime(2026, 11, 23, 12, 0, tzinfo=timezone.utc)
@@ -147,3 +153,44 @@ def test_atom_feed_is_parsed():
 )
 def test_hacker_news_ai_filter(title, related):
     assert _is_ai_related(title) is related
+
+
+def test_generic_job_ai_keyword_filter():
+    keywords = ["ai", "machine learning", "llm", "data scientist"]
+    assert _matches_ai_keywords("Staff Machine Learning Engineer", ["engineering"], keywords)
+    assert not _matches_ai_keywords("Finance Manager", ["accounting"], keywords)
+
+
+def test_greenhouse_first_published_is_verified():
+    published, method, confidence = parse_published(
+        {"first_published": "2026-11-23T11:30:00-04:00"},
+        NOW,
+    )
+    assert published is not None
+    assert method == "rss_api_timestamp"
+
+
+def test_description_words_do_not_make_job_remote():
+    assert not _is_remote(
+        location="San Francisco, CA",
+        workplace_type="On-site",
+        is_remote=None,
+    )
+
+
+def test_ashby_is_remote_flag_is_remote():
+    assert _is_remote(
+        location="San Francisco",
+        workplace_type="Hybrid",
+        is_remote=True,
+    )
+
+
+def test_wwr_title_prefix_becomes_company_and_is_removed():
+    company, title = _split_wwr_title("Wrike: Senior Product Manager, AI Platform")
+    assert company == "Wrike"
+    assert title == "Senior Product Manager, AI Platform"
+
+
+def test_clean_description_unescapes_and_strips_html():
+    assert _clean_description("&lt;p&gt;Build &amp; ship AI&lt;/p&gt;") == "Build & ship AI"

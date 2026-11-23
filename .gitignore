@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.db
+.venv/
+*.pyc
+data/
+.pytest_cache/
+check_data.py
+check_output.txt
+*credentials*.json
+*credential*.json
+google*.json

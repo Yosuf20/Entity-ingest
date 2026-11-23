@@ -177,6 +177,11 @@ def run_audit(
         "passed": not unresolved_entity_failures,
         "detail": f"{len(unresolved_entity_failures)} invalid rows",
     }
+    entity_log_count = _count(conn, "entity_log")
+    checks["Entity log is not empty"] = {
+        "passed": entity_log_count > 0,
+        "detail": f"{entity_log_count} rows",
+    }
 
     urls = [url for _, url, _ in provenance if url.startswith(("http://", "https://"))]
     rng = random.Random(random_seed)

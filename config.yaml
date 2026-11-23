@@ -1,0 +1,54 @@
+providers:
+  - name: gemini
+    model: gemini-1.5-flash
+    rpm: 60
+    max_input_tokens: 128000
+    env_key: GEMINI_API_KEY
+
+  - name: groq
+    model: llama3-70b-8192
+    rpm: 30
+    max_input_tokens: 8000
+    env_key: GROQ_API_KEY
+
+  - name: deepseek
+    model: deepseek-chat
+    rpm: 20
+    max_input_tokens: 32000
+    env_key: DEEPSEEK_API_KEY
+
+retry:
+  base: 1          # seconds
+  cap: 60          # max delay seconds
+  max_attempts: 5
+
+breaker:
+  threshold: 5     # consecutive failures before OPEN
+  cooldown: 60     # seconds in OPEN before HALF_OPEN
+
+crawler:
+  global_concurrency: 20
+  user_agent: "AIDataPipeline/1.0 (research; https://github.com/example/pipeline)"
+  retry:
+    base: 1.0
+    cap: 60.0
+    max_attempts: 5
+  domains:
+    export.arxiv.org:
+      concurrency: 1
+      min_interval: 3.0   # arXiv asks for ≥3 s between requests
+    api.github.com:
+      concurrency: 5
+      min_interval: 0.1
+    huggingface.co:
+      concurrency: 3
+      min_interval: 0.5
+
+papers_pipeline:
+  target: 1000
+  categories:
+    - cs.AI
+    - cs.LG
+    - cs.CL
+    - cs.CV
+  page_size: 100

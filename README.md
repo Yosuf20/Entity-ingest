@@ -1,127 +1,153 @@
-# AI Data Ingestion Pipeline — LLM Resilience Layer
+# AI Data Ingestion Pipeline
 
-> **Phase III**: Multi-tier LLM fallback chain with retry, rate-limiting,
-> circuit breaking, text chunking, hallucination grounding, and SQLite
-> persistence for failed records.
+This repository is a local, SQLite-backed data pipeline for collecting Y Combinator startup records, organization-owned Hugging Face model products, Hugging Face daily papers, recent AI news, and AI-related jobs. It uses async HTTP fetching, robots.txt checks, source-specific parsers, arXiv/GitHub/Hugging Face enrichment, and optional LLM resilience utilities for structured extraction. Most collection commands run without an LLM: the papers source is deterministic, startup/product collection is deterministic, and the news/job pipelines are source parsers plus date/freshness filtering.
 
----
-
-## Project Structure
-
+```mermaid
+flowchart LR
+    C[CLI: main.py] --> F[AsyncFetcher]
+    F -->|robots.txt + cache + retry| S[Source adapters]
+    S --> P[Pipelines and parsers]
+    P --> D[(SQLite pipeline.db)]
+    D --> R[Entity resolver]
+    D --> A[Audit]
+    D --> E[Google Sheets export]
+    L[Optional LLM orchestrator] --> D
 ```
-src/
-  config.py          # Loads config.yaml → typed Pydantic-Settings models
-  schemas.py         # Pydantic models: Startup, Product, Paper, Job, News
-  llm/
-    errors.py        # Exception hierarchy
-    retry.py         # Async exponential back-off with jitter
-    ratelimit.py     # Async token-bucket rate limiter
-    breaker.py       # Circuit breaker (CLOSED / OPEN / HALF_OPEN)
-    chunker.py       # Token-budget text compressor (tiktoken)
-    providers.py     # GeminiProvider, GroqProvider, DeepSeekProvider, MockProvider
-    orchestrator.py  # Fallback chain driver with grounding + DB persistence
-  storage/
-    db.py            # SQLite — `pending_extractions` table
-tests/
-  test_retry.py
-  test_ratelimit.py
-  test_breaker.py
-  test_orchestrator.py
-config.yaml
-.env.example
-requirements.txt
-```
-
----
 
 ## Setup
 
-### 1. Create a virtual environment (recommended)
+Python 3.12 or newer is required.
+
 ```bash
 python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# Linux / macOS
-source .venv/bin/activate
-```
 
-### 2. Install dependencies
-```bash
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+
+# macOS/Linux
+source .venv/bin/activate
+
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. Configure API keys
-```bash
-cp .env.example .env
-# Edit .env and fill in your keys
+Copy `.env.example` to `.env`. The current startup/config code reads these keys:
+
+```text
+GEMINI_API_KEY=...
+GROQ_API_KEY=...
+DEEPSEEK_API_KEY=...
+GITHUB_TOKEN=...                 # optional, improves GitHub API limits
+GOOGLE_SERVICE_ACCOUNT_JSON=...  # optional, required for Sheets export
+GOOGLE_SHEET_ID=...              # optional existing-sheet export target
+LOG_LEVEL=INFO
 ```
 
-**Keys are read exclusively from environment variables — never stored in `config.yaml`.**
+`config.yaml` controls:
 
----
+- provider order and model names;
+- provider RPM values;
+- retry base, cap, and maximum attempts;
+- circuit-breaker threshold and cooldown;
+- global crawler concurrency;
+- per-domain concurrency and minimum request interval;
+- papers target and legacy category settings;
+- AI keywords.
 
-## Running the Tests
+API keys belong in environment variables, not `config.yaml`.
+
+Google Sheets export also needs `gspread` and `google-auth`; these packages are not currently listed in `requirements.txt`. Install them explicitly before using `export`:
 
 ```bash
-pytest -v
+pip install gspread google-auth
 ```
 
-All tests use `MockProvider` and injectable sleep/clock — **no real API calls,
-no real sleeping**. The full suite completes in well under a second.
+## Commands
 
-### Startup dataset attribution
+All commands use `data/pipeline.db` by default.
 
-The Y Combinator startup dataset is sourced from the MIT-licensed community
-repository [`akshaybhalotia/yc_company_scraper`](https://github.com/akshaybhalotia/yc_company_scraper).
-The repository's `LICENSE` is MIT. Records provide Y Combinator company slugs;
-this pipeline derives the attribution URL as
-`https://www.ycombinator.com/companies/<slug>`.
+### Research papers
 
-### Hugging Face product organization rule
+```bash
+python main.py papers --target 20
+python main.py papers --target 1000
+```
 
-Organization ownership is checked with
-`https://huggingface.co/api/organizations/<name>/overview`. A successful
-organization response allows models for that author to be collected; personal
-accounts that do not resolve as organizations are skipped. Model pages remain
-the canonical `source.url`, and the organization name is stored as
-`startupName`.
+The papers pipeline pages the Hugging Face `/api/daily_papers?date=...` endpoint. It derives the arXiv abstract URL as `https://arxiv.org/abs/<arxiv_id>`, uses the Hugging Face paper URL as `source_url`, and resolves GitHub stars through GitHub's API. It does not fetch or use the arXiv API. Records are unique by `arxiv_id`.
 
----
+### Startups and products
 
-## Key Design Decisions
+```bash
+python main.py startups-products --target 1000
+```
 
-### Hallucination prevention (hard rule)
-Every string field extracted by an LLM is verified as a normalised substring of
-the source text. Numeric fields must appear verbatim. Any result that fails this
-grounding check is discarded and the next provider is tried. `source_url` is
-stamped onto every record so provenance is always traceable.
+This fetches the MIT-licensed Y Combinator community dataset and paginates organization-owned Hugging Face models. The Hugging Face organization check is an API lookup. Product records are saved with a model-page source URL and a pricing value of `FREE` only for recognized open-source license tags.
 
-### Provider fallback chain
-`Gemini Flash → Groq (Llama 3) → DeepSeek`. The order is configurable in
-`config.yaml`. Each provider wraps HTTP calls and maps status codes to typed
-exceptions (`RateLimited`, `PayloadTooLarge`, `ProviderDown`, `BadOutput`).
+### News and jobs
 
-### Retry strategy
-Exponential back-off: `delay = min(cap, base × 2^attempt) × jitter(0.5–1.5)`.
-If the provider supplies a `Retry-After` header, that value replaces the
-computed base. `BadOutput` and `PayloadTooLarge` are never retried.
+```bash
+python main.py signals
+```
 
-### Rate limiting
-In-process async token bucket (one per provider). After a 429, `penalize()`
-idles the whole bucket so concurrent tasks stop piling up requests.
-> **Production note** (in `ratelimit.py`): replace with a Redis-backed
-> implementation shared across worker processes/pods.
+This collects configured news RSS/API sources and job-board APIs, applies the 24-hour freshness rule where verified timestamps exist, and saves/refreshes the `news_signals` and `job_signals` tables.
 
-### Circuit breaker
-Opens after 5 consecutive failures, cools down for 60 s, then allows one
-HALF_OPEN trial request. Timing is injectable so tests run deterministically.
+### Entity resolution
 
-### SQLite persistence
-When every provider is exhausted, the raw text, schema name, source URL, and a
-`next_attempt_at` timestamp are written to `pending_extractions`. No record is
-silently dropped.
+```bash
+python main.py resolve
+```
 
-### Observability
-`Orchestrator.summary()` returns per-provider and total counters:
-`rate_limited`, `shrinks`, `failures`, `grounding_failed`, `success`, `skipped`.
-All events are logged via the standard `logging` module (no `print` statements).
+This resolves distinct startup/product/job company names using exact, alias, and conservative fuzzy matching from `src/resolver/seed_startups.json`, and writes cached results to `entity_log`.
+
+### Google Sheets export
+
+```bash
+python main.py export
+python main.py export --sheet-id <existing-spreadsheet-id> --sheet-title "AI Data"
+```
+
+Export creates or updates six tabs: `Startups`, `Products`, `Research Papers`, `Jobs`, `News`, and `Entity Mapping Log`. Credentials and optional sheet ID are supplied by environment variables or CLI arguments.
+
+### Audit
+
+```bash
+python main.py audit
+python main.py audit --sample-size 10
+```
+
+The audit checks minimum counts, provenance, duplicates, 24-hour jobs/news freshness, product pricing enum values, entity-log completeness, and a random source-URL sample. The scale thresholds remain 1,000 rows for startups, products, and papers.
+
+### Tests
+
+```bash
+pytest -q
+# or
+uv run pytest -q
+```
+
+The suite uses mocks and injected clocks/sleep functions for deterministic HTTP, retry, rate-limit, breaker, and pipeline tests.
+
+## Design decisions
+
+- **Async crawler:** `AsyncFetcher` uses `httpx`, a global semaphore, per-domain semaphores, minimum inter-request intervals, robots.txt parsing, ETag caching, and SQLite raw-page persistence.
+- **Fallback chain:** the LLM module implements ordered Gemini → Groq → DeepSeek fallback. The configured providers are not invoked by the current `papers`, `signals`, `startups-products`, `resolve`, `export`, or `audit` commands; they are reusable but presently standalone infrastructure.
+- **429 backoff and jitter:** retryable HTTP failures use exponential delay capped at the configured maximum. `Retry-After` is preferred when supplied. Jitter is uniformly sampled from 0.5–1.5 times the delay.
+- **413 handling:** the LLM orchestrator applies up to three text reductions (60% of the previous text each time) and retries the same provider before moving to fallback providers.
+- **Grounding check:** every LLM string result must normalize to a substring of the source text; numeric values must appear verbatim. Meta fields such as `source_url` and `extracted_by` are excluded. Failed grounding moves to the next provider.
+- **Circuit breaking:** provider circuit breakers open after five consecutive failures, wait for a configured cooldown, and allow one HALF_OPEN probe.
+- **Dedupe:** startups/products use canonical source URL primary keys, papers use unique `arxiv_id`, and signals use a canonical URL plus normalized text hash.
+- **Freshness:** dated news/job records must be within 24 hours and not in the future. Undated items use a first-run baseline plus canonical/hash unseen-item filtering; their freshness is inferred as “new since last run,” not treated as verified publication time.
+- **Resume:** startup/product and paper inserts ignore duplicates. Papers also compare existing `arxiv_id` values before GitHub/star work. Signal processing is based on stored seen-item hashes.
+
+## Limitations
+
+- arXiv's API host is intentionally not used. `https://export.arxiv.org/robots.txt` disallows `/`; the repository keeps `arxiv.py` only for compatibility/reference.
+- The papers pipeline is Hugging Face daily-papers based. Its historical pagination is by date and can include empty days.
+- The current scale is local: SQLite, in-process semiautomatic resume, and in-process provider token buckets. Redis, distributed queues, stateless workers, and Postgres are proposed architecture, not implemented here.
+- The LLM providers and grounding/orchestration module are implemented and tested, but no current CLI command wires it into a collection pipeline. `pending_extractions` is persisted, but no CLI retry-drain worker is implemented.
+- Google Sheets export requires extra packages not declared in `requirements.txt` and service-account credentials.
+- GitHub star resolution is best-effort. Repository 404s are counted, and missing or invalid GitHub links do not create a paper record.
+- Free-tier provider limits vary. The code has no durable provider accounting, Redis limits, or paid-subscription guarantees.
+- Robots.txt handling fails open if a `robots.txt` request returns 404 or 5xx or is unreachable; it does not bypass an explicitly disallowed path.
+- No Playwright, proxy pool, CAPTCHA-solving, cookie/session manager, or anti-bot bypass is implemented.
+- The random source audit makes real HEAD/GET requests and will depend on network access and current remote availability.

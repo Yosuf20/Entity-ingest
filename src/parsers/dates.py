@@ -45,7 +45,7 @@ def parse_published(
     now = _utc(now)
 
     for key in (
-        "published", "pubDate", "published_at", "publishedAt",
+        "published", "pubDate", "published_at", "publishedAt", "first_published",
         "date_published", "datePublished", "created_at", "createdAt",
         "timestamp",
     ):
